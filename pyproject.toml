@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eval-report-builder"
+version = "0.1.0"
+description = "Build evaluation reports: polished Markdown and HTML reports with inline-SVG charts, quality gates, and model-vs-baseline comparisons."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Anusha Mukka", email = "anushamukka9@gmail.com" }]
+keywords = ["mlops", "evaluation", "reporting", "charts", "svg"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://anushamukka.com"
+Repository = "https://github.com/anushamukka9/eval-report-builder"
+
+[project.scripts]
+eval-report-builder = "eval_report_builder.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
