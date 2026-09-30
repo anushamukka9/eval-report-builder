@@ -11,14 +11,16 @@ load_results(path)      -> dict      validated results document
 Report                  -> class     in-memory report builder
 build_report(results, format) -> str rendered report ("markdown" | "html")
 write_report(results, out, format) -> pathlib.Path
+metric_highlights(results, lower_is_better) -> list of per-metric best/worst splits
 
 CLI
 ---
-python -m eval_report_builder build results.json -o report.html --format html
-python -m eval_report_builder sample -o demo-results.json --seed 42
+python -m eval_report_builder build results.json -o report.html --format html --theme dark
+python -m eval_report_builder sample -o demo-results.json --seed 42 --history-points 6
 """
 
 from .api import Report, build_report, load_results, write_report
+from .compare import metric_highlights
 from .gates import Gate, GateResult, evaluate_gates
 from .sample import make_sample_results
 
@@ -30,6 +32,7 @@ __all__ = [
     "evaluate_gates",
     "load_results",
     "make_sample_results",
+    "metric_highlights",
     "write_report",
 ]
 
