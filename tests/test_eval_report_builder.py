@@ -162,3 +162,127 @@ def test_html_escapes_malicious_content():
     html_text = build_report(doc, "html")
     assert "<script>" not in html_text
     assert "&lt;script&gt;" in html_text
+
+
+# ---------------------------------------------------------------------------
+# New features: themes, highlights, history/trends
+# ---------------------------------------------------------------------------
+
+from eval_report_builder.charts import bar_chart as _bc  # noqa: E402
+from eval_report_builder.compare import metric_highlights  # noqa: E402
+from eval_report_builder.cli import main as cli_main  # noqa: E402
+
+
+def _sample_with_history():
+    return make_sample_results(seed=42, jitter=0.001, history_points=5)
+
+
+def test_metric_highlights_honors_lower_is_better():
+    hl = {h["metric"]: h for h in metric_highlights(sample(), lower_is_better=("latency_ms",))}
+    # dev has the lowest latency in the sample fixture
+    assert hl["latency_ms"]["best_split"] == "dev"
+    assert hl["latency_ms"]["worst_split"] == "canary"
+    # accuracy is higher-is-better: dev (0.9521) beats canary (0.9380)
+    assert hl["accuracy"]["best_split"] == "dev"
+    assert hl["accuracy"]["worst_split"] == "canary"
+
+
+def test_markdown_has_highlights_section():
+    text = build_report(sample(), "markdown", lower_is_better=("latency_ms",))
+    assert "## Highlights" in text
+    assert "| Metric | Best split | Worst split |" in text
+
+
+def test_html_has_highlights_section():
+    html_text = build_report(sample(), "html", lower_is_better=("latency_ms",))
+    assert "<h2>Highlights</h2>" in html_text
+    assert "Best split" in html_text
+
+
+def test_dark_theme_html_uses_dark_palette():
+    html_text = build_report(sample(), "html", theme="dark")
+    assert "background: #111827" in html_text
+    assert "background: #ffffff" not in html_text
+
+
+def test_light_theme_is_default_and_explicit():
+    default = build_report(sample(), "html")
+    explicit = build_report(sample(), "html", theme="light")
+    assert "background: #ffffff" in default
+    assert default == explicit
+
+
+def test_unknown_theme_rejected():
+    with pytest.raises(ValueError, match="theme"):
+        Report(sample(), theme="neon")
+    with pytest.raises(ValueError, match="theme"):
+        build_report(sample(), "html", theme="neon")
+
+
+def test_dark_charts_use_dark_tick_colors():
+    svg = _bc(["a", "b"], [0.9, 0.8], title="demo", dark=True)
+    assert "#9ca3af" in svg  # dark tick color
+    svg_light = _bc(["a", "b"], [0.9, 0.8], title="demo")
+    assert "#6b7280" in svg_light
+
+
+def test_history_validation_rejects_bad_entries():
+    doc = sample()
+    doc["history"] = [{"label": "", "metrics": {"f1": 0.9}}]
+    with pytest.raises(ValueError, match="label"):
+        validate_results(doc)
+    doc["history"] = [{"label": "r1", "metrics": {"f1": "high"}}]
+    with pytest.raises(ValueError, match="must be a number"):
+        validate_results(doc)
+    doc["history"] = [{"metrics": {"f1": 0.9}}]
+    with pytest.raises(ValueError, match="label"):
+        validate_results(doc)
+
+
+def test_history_renders_trends_sections():
+    doc = _sample_with_history()
+    md = build_report(doc, "markdown")
+    assert "## Trends" in md
+    assert "run-01" in md and "run-05" in md
+    html_text = build_report(doc, "html")
+    assert "<h2>Trends</h2>" in html_text
+    assert "over time" in html_text  # line charts per metric
+    # summary mentions the snapshot count
+    assert "History snapshots: 5" in md
+
+
+def test_no_history_shows_placeholder():
+    md = build_report(sample(), "markdown")
+    assert "_No history recorded._" in md
+    html_text = build_report(sample(), "html")
+    assert "<h2>Trends</h2>" not in html_text
+
+
+def test_sample_history_is_deterministic_with_seed():
+    a = make_sample_results(seed=7, jitter=0.01, history_points=4)
+    b = make_sample_results(seed=7, jitter=0.01, history_points=4)
+    assert a == b
+    assert len(a["history"]) == 4
+    assert [h["label"] for h in a["history"]] == ["run-01", "run-02", "run-03", "run-04"]
+    validate_results(a)
+
+
+def test_cli_build_with_dark_theme(tmp_path):
+    src = tmp_path / "results.json"
+    src.write_text(json.dumps(_sample_with_history()), encoding="utf-8")
+    out = tmp_path / "report.html"
+    rc = cli_main(["build", str(src), "-o", str(out), "--format", "html",
+                   "--theme", "dark"])
+    assert rc == 0
+    content = out.read_text(encoding="utf-8")
+    assert "background: #111827" in content
+    assert "<h2>Trends</h2>" in content
+
+
+def test_cli_sample_with_history_points(tmp_path):
+    out = tmp_path / "demo.json"
+    rc = cli_main(["sample", "-o", str(out), "--seed", "3", "--history-points", "3"])
+    assert rc == 0
+    doc = json.loads(out.read_text(encoding="utf-8"))
+    assert len(doc["history"]) == 3
+    validate_results(doc)
