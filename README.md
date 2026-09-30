@@ -23,7 +23,7 @@ metric regression fails the build before it ships.
 pip install -e .        # from a checkout; no runtime dependencies
 ```
 
-Python 3.10+. No matplotlib, no pandas — charts are hand-rolled SVG.
+Python 3.10+. No matplotlib, no pandas: charts are hand-rolled SVG.
 
 ## Quickstart
 
@@ -31,11 +31,12 @@ Python 3.10+. No matplotlib, no pandas — charts are hand-rolled SVG.
 # 1. Make a demo results file
 eval-report-builder sample -o demo.json --seed 42
 
-# 2. Build both report formats
+# 2. Build both report formats (HTML supports a dark theme too)
 eval-report-builder build demo.json -o report.md
 eval-report-builder build demo.json -o report.html --format html
+eval-report-builder build demo.json -o report-dark.html --format html --theme dark
 
-# 3. Gate the build on quality thresholds (exit 1 on failure — CI friendly)
+# 3. Gate the build on quality thresholds (exit 1 on failure; CI friendly)
 eval-report-builder build demo.json --check-gates --lower-is-better latency_ms
 ```
 
@@ -44,8 +45,9 @@ Or in Python (`examples/quickstart.py` is a runnable version of this):
 ```python
 from eval_report_builder import Report, write_report, make_sample_results
 
-results = make_sample_results(seed=42)
-report = Report(results, lower_is_better=("latency_ms",))
+# history_points adds synthetic snapshots so the Trends section has data
+results = make_sample_results(seed=42, history_points=6)
+report = Report(results, lower_is_better=("latency_ms",), theme="dark")
 write_report(report, "report.html", fmt="html")
 ```
 
@@ -104,4 +106,4 @@ python examples/quickstart.py   # writes examples/output/report.{md,html}
 
 ## License
 
-MIT — Copyright 2026 Anusha Mukka. See [LICENSE](LICENSE).
+MIT - Copyright 2026 Anusha Mukka. See [LICENSE](LICENSE).
