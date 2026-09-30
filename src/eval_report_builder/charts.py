@@ -1,15 +1,28 @@
-"""Inline-SVG chart builders — zero dependencies, embeddable in HTML reports.
+"""Inline-SVG chart builders: zero dependencies, embeddable in HTML reports.
 
 bar_chart(series, labels, ...)   -> vertical bar chart SVG string
 line_chart(series_map, labels)   -> multi-line chart SVG string
 comparison_chart(...)            -> grouped bar chart: model vs baselines
 
 All charts are hand-rolled SVG: a single self-contained ``<svg>`` element
-with inline styles, safe to paste into an HTML report or email.
+with inline styles, safe to paste into an HTML report or email. Pass
+``dark=True`` for charts rendered on a dark page background.
 """
 
 import html as _html
 from math import floor, log10
+
+_LIGHT = {"grid": "#e5e7eb", "tick": "#6b7280", "label": "#374151", "value": "#111827"}
+_DARK = {"grid": "#374151", "tick": "#9ca3af", "label": "#d1d5db", "value": "#f9fafb"}
+
+_PALETTE_LIGHT = ["#2563eb", "#dc2626", "#059669", "#d97706", "#7c3aed"]
+_PALETTE_DARK = ["#60a5fa", "#f87171", "#34d399", "#fbbf24", "#a78bfa"]
+
+
+def _palette(dark, color=None):
+    if color is not None:
+        return [color]
+    return list(_PALETTE_DARK if dark else _PALETTE_LIGHT)
 
 
 def _esc(text):
@@ -29,11 +42,12 @@ def _nice_step(span, target_ticks=5):
 
 
 def bar_chart(labels, values, title="", value_fmt=".3f", color="#2563eb",
-              width=560, height=300, y_label=""):
+              width=560, height=300, y_label="", dark=False):
     """Vertical bar chart for one metric across splits (or models)."""
     labels = list(labels)
     values = list(values)
     n = len(values)
+    pal = _DARK if dark else _LIGHT
     margin = dict(top=38, right=16, bottom=46, left=64)
     plot_w = width - margin["left"] - margin["right"]
     plot_h = height - margin["top"] - margin["bottom"]
@@ -57,7 +71,7 @@ def bar_chart(labels, values, title="", value_fmt=".3f", color="#2563eb",
              f'style="font-family:system-ui,sans-serif">']
     if title:
         parts.append(f'<text x="{width/2}" y="20" text-anchor="middle" font-size="14" '
-                     f'font-weight="600">{_esc(title)}</text>')
+                     f'font-weight="600" fill="{pal["value"]}">{_esc(title)}</text>')
 
     step = _nice_step(top - bottom)
     tick = bottom
@@ -65,13 +79,13 @@ def bar_chart(labels, values, title="", value_fmt=".3f", color="#2563eb",
         y = y_of(tick)
         if margin["top"] - 4 <= y <= margin["top"] + plot_h + 4:
             parts.append(f'<line x1="{margin["left"]}" y1="{y:.1f}" '
-                         f'x2="{width - margin["right"]}" y2="{y:.1f}" stroke="#e5e7eb"/>')
+                         f'x2="{width - margin["right"]}" y2="{y:.1f}" stroke="{pal["grid"]}"/>')
             parts.append(f'<text x="{margin["left"] - 8}" y="{y + 4:.1f}" text-anchor="end" '
-                         f'font-size="11" fill="#6b7280">{tick:.{3}g}</text>')
+                         f'font-size="11" fill="{pal["tick"]}">{tick:.{3}g}</text>')
         tick += step
     if y_label:
         parts.append(f'<text x="14" y="{margin["top"] + plot_h/2}" text-anchor="middle" '
-                     f'font-size="11" fill="#6b7280" transform="rotate(-90 14 '
+                     f'font-size="11" fill="{pal["tick"]}" transform="rotate(-90 14 '
                      f'{margin["top"] + plot_h/2})">{_esc(y_label)}</text>')
 
     for i, (lab, val) in enumerate(zip(labels, values)):
@@ -81,18 +95,20 @@ def bar_chart(labels, values, title="", value_fmt=".3f", color="#2563eb",
         parts.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{bar_w:.1f}" height="{h:.1f}" '
                      f'fill="{color}" rx="3"/>')
         parts.append(f'<text x="{x + bar_w/2:.1f}" y="{y - 6:.1f}" text-anchor="middle" '
-                     f'font-size="11" font-weight="600">{val:{value_fmt}}</text>')
+                     f'font-size="11" font-weight="600" fill="{pal["value"]}">{val:{value_fmt}}</text>')
         parts.append(f'<text x="{x + bar_w/2:.1f}" y="{height - 24}" text-anchor="middle" '
-                     f'font-size="11" fill="#374151">{_esc(lab)}</text>')
+                     f'font-size="11" fill="{pal["label"]}">{_esc(lab)}</text>')
     parts.append("</svg>")
     return "\n".join(parts)
 
 
-def line_chart(series, x_labels, title="", color_palette=None, width=560, height=300):
+def line_chart(series, x_labels, title="", color_palette=None, width=560, height=300,
+               dark=False):
     """Multi-series line chart. `series` is {name: [values]} aligned to x_labels."""
     x_labels = list(x_labels)
     series = {k: list(v) for k, v in series.items()}
-    palette = color_palette or ["#2563eb", "#dc2626", "#059669", "#d97706", "#7c3aed"]
+    palette = color_palette or _palette(dark)
+    pal = _DARK if dark else _LIGHT
     margin = dict(top=38, right=16, bottom=46, left=64)
     plot_w = width - margin["left"] - margin["right"]
     plot_h = height - margin["top"] - margin["bottom"]
@@ -114,7 +130,7 @@ def line_chart(series, x_labels, title="", color_palette=None, width=560, height
              f'style="font-family:system-ui,sans-serif">']
     if title:
         parts.append(f'<text x="{width/2}" y="20" text-anchor="middle" font-size="14" '
-                     f'font-weight="600">{_esc(title)}</text>')
+                     f'font-weight="600" fill="{pal["value"]}">{_esc(title)}</text>')
 
     step = _nice_step(top - bottom)
     tick = bottom
@@ -122,15 +138,15 @@ def line_chart(series, x_labels, title="", color_palette=None, width=560, height
         _, y = xy(0, tick)
         if margin["top"] - 4 <= y <= margin["top"] + plot_h + 4:
             parts.append(f'<line x1="{margin["left"]}" y1="{y:.1f}" '
-                         f'x2="{width - margin["right"]}" y2="{y:.1f}" stroke="#e5e7eb"/>')
+                         f'x2="{width - margin["right"]}" y2="{y:.1f}" stroke="{pal["grid"]}"/>')
             parts.append(f'<text x="{margin["left"] - 8}" y="{y + 4:.1f}" text-anchor="end" '
-                         f'font-size="11" fill="#6b7280">{tick:.{3}g}</text>')
+                         f'font-size="11" fill="{pal["tick"]}">{tick:.{3}g}</text>')
         tick += step
 
     for i, lab in enumerate(x_labels):
         x = margin["left"] + plot_w * i / (n - 1)
         parts.append(f'<text x="{x:.1f}" y="{height - 24}" text-anchor="middle" '
-                     f'font-size="11" fill="#374151">{_esc(lab)}</text>')
+                     f'font-size="11" fill="{pal["label"]}">{_esc(lab)}</text>')
 
     lx = width - margin["right"] - 4
     for j, (name, vals) in enumerate(series.items()):
@@ -143,16 +159,17 @@ def line_chart(series, x_labels, title="", color_palette=None, width=560, height
             parts.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3.5" fill="{color}"/>')
         ly = margin["top"] + j * 18
         parts.append(f'<rect x="{lx - 120}" y="{ly - 10}" width="12" height="12" fill="{color}" rx="2"/>')
-        parts.append(f'<text x="{lx - 102}" y="{ly}" font-size="11" fill="#374151">{_esc(name)}</text>')
+        parts.append(f'<text x="{lx - 102}" y="{ly}" font-size="11" fill="{pal["label"]}">{_esc(name)}</text>')
     parts.append("</svg>")
     return "\n".join(parts)
 
 
-def comparison_chart(groups, series_names, series_values, title=""):
+def comparison_chart(groups, series_names, series_values, title="", dark=False):
     """Grouped bar chart: rows per group (split), one bar per series (model/baseline)."""
     groups = list(groups)
     series_names = list(series_names)
-    palette = ["#2563eb", "#dc2626", "#059669", "#d97706", "#7c3aed"]
+    palette = _palette(dark)
+    pal = _DARK if dark else _LIGHT
     width, height = 640, 320
     margin = dict(top=38, right=16, bottom=46, left=64)
     plot_w = width - margin["left"] - margin["right"]
@@ -176,16 +193,16 @@ def comparison_chart(groups, series_names, series_values, title=""):
              f'style="font-family:system-ui,sans-serif">']
     if title:
         parts.append(f'<text x="{width/2}" y="20" text-anchor="middle" font-size="14" '
-                     f'font-weight="600">{_esc(title)}</text>')
+                     f'font-weight="600" fill="{pal["value"]}">{_esc(title)}</text>')
 
     step = _nice_step(top - vmin)
     tick = vmin
     while tick <= top + 1e-9:
         y = y_of(tick)
         parts.append(f'<line x1="{margin["left"]}" y1="{y:.1f}" '
-                     f'x2="{width - margin["right"]}" y2="{y:.1f}" stroke="#e5e7eb"/>')
+                     f'x2="{width - margin["right"]}" y2="{y:.1f}" stroke="{pal["grid"]}"/>')
         parts.append(f'<text x="{margin["left"] - 8}" y="{y + 4:.1f}" text-anchor="end" '
-                     f'font-size="11" fill="#6b7280">{tick:.{3}g}</text>')
+                     f'font-size="11" fill="{pal["tick"]}">{tick:.{3}g}</text>')
         tick += step
 
     for gi, group in enumerate(groups):
@@ -198,12 +215,12 @@ def comparison_chart(groups, series_names, series_values, title=""):
             parts.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{bar_w:.1f}" height="{h:.1f}" '
                          f'fill="{palette[si % len(palette)]}" rx="3"/>')
         parts.append(f'<text x="{gx + slot/2:.1f}" y="{height - 24}" text-anchor="middle" '
-                     f'font-size="11" fill="#374151">{_esc(group)}</text>')
+                     f'font-size="11" fill="{pal["label"]}">{_esc(group)}</text>')
 
     for si, name in enumerate(series_names):
         lx, ly = margin["left"] + si * 150, margin["top"] - 22
         parts.append(f'<rect x="{lx}" y="{ly - 10}" width="12" height="12" '
                      f'fill="{palette[si % len(palette)]}" rx="2"/>')
-        parts.append(f'<text x="{lx + 16}" y="{ly}" font-size="11" fill="#374151">{_esc(name)}</text>')
+        parts.append(f'<text x="{lx + 16}" y="{ly}" font-size="11" fill="{pal["label"]}">{_esc(name)}</text>')
     parts.append("</svg>")
     return "\n".join(parts)
