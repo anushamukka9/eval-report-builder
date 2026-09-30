@@ -1,6 +1,6 @@
 """Markdown report renderer."""
 
-from .compare import compare_to_baselines, metric_union
+from .compare import compare_to_baselines, metric_highlights, metric_union
 from .gates import evaluate_gates
 
 
@@ -40,9 +40,40 @@ def _metrics_table(results):
         row = [metric]
         for s in results["splits"]:
             v = s["metrics"].get(metric)
-            row.append(_fmt(v) if v is not None else "—")
+            row.append(_fmt(v) if v is not None else "n/a")
         rows.append(row)
     return _table(headers, rows)
+
+
+def _highlights_section(results, lower_is_better):
+    lines = ["## Highlights", ""]
+    rows = []
+    for h in metric_highlights(results, lower_is_better):
+        rows.append([h["metric"],
+                     f"{h['best_split']} ({_fmt(h['best_value'])})",
+                     f"{h['worst_split']} ({_fmt(h['worst_value'])})"])
+    lines.append(_table(["Metric", "Best split", "Worst split"], rows))
+    return "\n".join(lines)
+
+
+def _trends_section(results):
+    lines = ["## Trends", ""]
+    history = results.get("history", [])
+    if not history:
+        lines.append("_No history recorded._")
+        return "\n".join(lines)
+    metrics = [m for m in metric_union(results)
+               if any(m in h["metrics"] for h in history)]
+    headers = ["Snapshot"] + metrics
+    rows = []
+    for h in history:
+        row = [h["label"]]
+        for m in metrics:
+            v = h["metrics"].get(m)
+            row.append(_fmt(v) if v is not None else "n/a")
+        rows.append(row)
+    lines.append(_table(headers, rows))
+    return "\n".join(lines)
 
 
 def _comparison_section(results, lower_is_better):
@@ -95,11 +126,19 @@ def render_markdown(results, lower_is_better=()):
     lines.append(f"- Metrics reported: {len(metric_union(results))}")
     if results.get("baselines"):
         lines.append(f"- Baselines compared: {', '.join(b['name'] for b in results['baselines'])}")
+    if results.get("history"):
+        lines.append(f"- History snapshots: {len(results['history'])}")
+    lines.append("")
+
+    lines.append(_highlights_section(results, lower_is_better))
     lines.append("")
 
     lines.append("## Metrics by Split")
     lines.append("")
     lines.append(_metrics_table(results))
+    lines.append("")
+
+    lines.append(_trends_section(results))
     lines.append("")
 
     gate_results, overall = evaluate_gates(results)
