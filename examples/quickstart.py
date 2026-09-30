@@ -33,7 +33,7 @@ def main():
     print(f"wrote {md_path}")
     print(f"wrote {html_path}")
 
-    # 3. Evaluate the quality gates — the same check the CLI's --check-gates does.
+    # 3. Evaluate the quality gates, the same check the CLI's --check-gates does.
     from eval_report_builder.gates import evaluate_gates
     gate_results, overall = evaluate_gates(results)
     for r in gate_results:
