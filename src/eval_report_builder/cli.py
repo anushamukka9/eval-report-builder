@@ -40,6 +40,8 @@ def build_parser():
                    help="Report format (default: markdown).")
     b.add_argument("--lower-is-better", default="",
                    help="Comma-separated metrics where lower is better, e.g. latency_ms,error_rate.")
+    b.add_argument("--theme", default="light", choices=["light", "dark"],
+                   help="HTML report theme (default: light).")
     b.add_argument("--check-gates", action="store_true",
                    help="Exit non-zero if any error-severity gate fails (for CI).")
 
@@ -49,21 +51,24 @@ def build_parser():
     s.add_argument("--seed", type=int, default=None, help="Random seed for metric jitter.")
     s.add_argument("--jitter", type=float, default=0.0,
                    help="Max absolute jitter applied to float metrics (default: 0).")
+    s.add_argument("--history-points", type=int, default=0,
+                   help="Include N synthetic history snapshots for the trends section.")
     return parser
 
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
     if args.command == "sample":
-        path = write_sample(args.output, seed=args.seed, jitter=args.jitter)
+        path = write_sample(args.output, seed=args.seed, jitter=args.jitter,
+                            history_points=args.history_points)
         print(f"wrote sample results: {path}")
         return 0
 
     lower = _comma_list(args.lower_is_better)
-    report = Report.from_file(args.results, lower_is_better=lower)
+    report = Report.from_file(args.results, lower_is_better=lower, theme=args.theme)
     out = args.output or ("report.html" if args.format == "html" else "report.md")
     path = write_report(report, out, fmt=args.format)
-    print(f"wrote {args.format} report: {path}")
+    print(f"wrote {args.format} report ({args.theme} theme): {path}")
 
     if args.check_gates:
         gate_results, overall = evaluate_gates(report.results)
