@@ -1,15 +1,20 @@
-"""HTML report renderer: self-contained single file with inline SVG charts."""
+"""HTML report renderer: self-contained single file with inline SVG charts.
+
+Supports a ``theme`` of "light" (default) or "dark"; charts follow the
+theme automatically.
+"""
 
 import html as _html
 from datetime import datetime, timezone
 
-from .charts import bar_chart, comparison_chart
-from .compare import compare_to_baselines, metric_union
+from .charts import bar_chart, comparison_chart, line_chart
+from .compare import compare_to_baselines, metric_highlights, metric_union
 from .gates import evaluate_gates
 
-_CSS = """
+_CSS_LIGHT = """
 body { font-family: system-ui, -apple-system, sans-serif; color: #111827;
-       max-width: 960px; margin: 0 auto; padding: 32px 20px; line-height: 1.5; }
+       max-width: 960px; margin: 0 auto; padding: 32px 20px; line-height: 1.5;
+       background: #ffffff; }
 h1 { font-size: 1.9rem; border-bottom: 3px solid #2563eb; padding-bottom: 8px; }
 h2 { font-size: 1.35rem; margin-top: 2rem; color: #1f2937; }
 table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 0.92rem; }
@@ -32,6 +37,36 @@ tr:nth-child(even) td { background: #f9fafb; }
           border-top: 1px solid #e5e7eb; padding-top: 12px; }
 """
 
+_CSS_DARK = """
+body { font-family: system-ui, -apple-system, sans-serif; color: #e5e7eb;
+       max-width: 960px; margin: 0 auto; padding: 32px 20px; line-height: 1.5;
+       background: #111827; }
+h1 { font-size: 1.9rem; border-bottom: 3px solid #60a5fa; padding-bottom: 8px; }
+h2 { font-size: 1.35rem; margin-top: 2rem; color: #f9fafb; }
+h3 { color: #f9fafb; }
+table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 0.92rem; }
+th, td { border: 1px solid #374151; padding: 8px 10px; text-align: left; }
+th { background: #1f2937; font-weight: 600; }
+tr:nth-child(even) td { background: #1a2233; }
+.meta { color: #9ca3af; margin-bottom: 4px; }
+.notes { background: #1e3a5f; border-left: 4px solid #60a5fa; padding: 10px 14px;
+         margin: 16px 0; border-radius: 4px; color: #dbeafe; }
+.gate-pass { color: #34d399; font-weight: 600; }
+.gate-fail { color: #f87171; font-weight: 600; }
+.gate-warn { color: #fbbf24; font-weight: 600; }
+.verdict { font-size: 1.1rem; padding: 10px 14px; border-radius: 6px; margin: 12px 0; }
+.verdict.pass { background: #064e3b; border: 1px solid #34d399; }
+.verdict.fail { background: #7f1d1d; border: 1px solid #f87171; }
+.improved { color: #34d399; font-weight: 600; }
+.regressed { color: #f87171; font-weight: 600; }
+.chart { margin: 16px 0; overflow-x: auto; }
+.footer { margin-top: 3rem; font-size: 0.8rem; color: #6b7280;
+          border-top: 1px solid #374151; padding-top: 12px; }
+.footer a { color: #60a5fa; }
+"""
+
+_THEMES = {"light": _CSS_LIGHT, "dark": _CSS_DARK}
+
 
 def _esc(v):
     return _html.escape(str(v), quote=True)
@@ -41,13 +76,36 @@ def _fmt(v):
     return f"{v:.4f}" if isinstance(v, float) else str(v)
 
 
-def render_html(results, lower_is_better=()):
+def _trends_data(results):
+    """Per-metric (labels, values) from the optional history snapshots."""
+    history = results.get("history", [])
+    if not history:
+        return []
+    out = []
+    metrics = [m for m in metric_union(results)
+               if any(m in h["metrics"] for h in history)]
+    for metric in metrics:
+        labels, values = [], []
+        for h in history:
+            if metric in h["metrics"]:
+                labels.append(h["label"])
+                values.append(h["metrics"][metric])
+        if len(values) >= 2:
+            out.append((metric, labels, values))
+    return out
+
+
+def render_html(results, lower_is_better=(), theme="light"):
     """Render the full HTML report as a single self-contained document."""
+    if theme not in _THEMES:
+        raise ValueError(f"theme must be one of {sorted(_THEMES)}, got {theme!r}")
+    dark = theme == "dark"
     title = results["title"]
     model = results.get("model", {})
     parts = ["<!DOCTYPE html>", "<html lang=\"en\">", "<head>",
              '<meta charset="utf-8">', '<meta name="viewport" content="width=device-width, initial-scale=1">',
-             f"<title>{_esc(title)}</title>", f"<style>{_CSS}</style>", "</head>", "<body>"]
+             f"<title>{_esc(title)}</title>", f"<style>{_THEMES[theme]}</style>",
+             "</head>", "<body>"]
     parts.append(f"<h1>{_esc(title)}</h1>")
 
     if model.get("name"):
@@ -69,6 +127,18 @@ def render_html(results, lower_is_better=()):
         parts.append(f"<li>Baselines compared: {names}</li>")
     parts.append("</ul>")
 
+    # Highlights: best/worst split per metric.
+    parts.append("<h2>Highlights</h2>")
+    parts.append("<table><thead><tr><th>Metric</th><th>Best split</th>"
+                 "<th>Worst split</th></tr></thead><tbody>")
+    for h in metric_highlights(results, lower_is_better):
+        parts.append("<tr>" +
+                     f"<td><strong>{_esc(h['metric'])}</strong></td>" +
+                     f"<td class=\"improved\">{_esc(h['best_split'])} ({_fmt(h['best_value'])})</td>" +
+                     f"<td class=\"regressed\">{_esc(h['worst_split'])} ({_fmt(h['worst_value'])})</td>" +
+                     "</tr>")
+    parts.append("</tbody></table>")
+
     # Metrics table
     metrics = metric_union(results)
     parts.append("<h2>Metrics by Split</h2><table><thead><tr><th>Metric</th>")
@@ -76,7 +146,7 @@ def render_html(results, lower_is_better=()):
     parts.append("</tr></thead><tbody>")
     for metric in metrics:
         parts.append("<tr>" + f"<td><strong>{_esc(metric)}</strong></td>" +
-                     "".join(f"<td>{_esc(_fmt(s['metrics'][metric])) if metric in s['metrics'] else '—'}</td>"
+                     "".join(f"<td>{_esc(_fmt(s['metrics'][metric])) if metric in s['metrics'] else 'n/a'}</td>"
                              for s in results["splits"]) + "</tr>")
     parts.append("</tbody></table>")
 
@@ -90,7 +160,16 @@ def render_html(results, lower_is_better=()):
                 values.append(s["metrics"][metric])
         if values:
             parts.append('<div class="chart">' +
-                         bar_chart(labels, values, title=f"{metric} by split") + "</div>")
+                         bar_chart(labels, values, title=f"{metric} by split", dark=dark) + "</div>")
+
+    # Trends: line chart per metric over history snapshots.
+    trends = _trends_data(results)
+    if trends:
+        parts.append("<h2>Trends</h2>")
+        for metric, labels, values in trends:
+            parts.append('<div class="chart">' +
+                         line_chart({metric: values}, labels,
+                                    title=f"{metric} over time", dark=dark) + "</div>")
 
     # Quality gates
     gate_results, overall = evaluate_gates(results)
@@ -132,7 +211,8 @@ def render_html(results, lower_is_better=()):
                 series_values.append(vals)
             parts.append('<div class="chart">' +
                          comparison_chart(groups, names, series_values,
-                                          title=f"{metric}: model vs baselines") + "</div>")
+                                          title=f"{metric}: model vs baselines",
+                                          dark=dark) + "</div>")
         for baseline in baselines:
             parts.append(f"<h3>Baseline: {_esc(baseline)}</h3>")
             parts.append("<table><thead><tr><th>Split</th><th>Metric</th><th>Model</th>"
