@@ -19,6 +19,9 @@ Expected JSON shape (all keys are documented in docs/usage.md):
     {"metric": "f1", "split": "test", "op": ">=",
      "threshold": 0.90, "severity": "error",
      "description": "F1 must stay above 0.90 on test"}
+  ],
+  "history": [                                       # optional
+    {"label": "run-01", "metrics": {"f1": 0.87, "latency_ms": 13.0}}
   ]
 }
 """
@@ -46,6 +49,11 @@ def _req_list(obj, name):
     return obj
 
 
+def _check_metric_value(key, value, where):
+    if isinstance(value, bool) or not isinstance(value, _METRIC_TYPES):
+        _err(f"metric '{key}' in {where} must be a number")
+
+
 def validate_split(split, *, where):
     _req_mapping(split, f"{where} split")
     name = split.get("name")
@@ -56,8 +64,7 @@ def validate_split(split, *, where):
     if not metrics:
         _err(f"{where} split '{name}' has no metrics")
     for key, value in metrics.items():
-        if isinstance(value, bool) or not isinstance(value, _METRIC_TYPES):
-            _err(f"metric '{key}' in {where} split '{name}' must be a number")
+        _check_metric_value(key, value, f"{where} split '{name}'")
     samples = split.get("samples")
     if samples is not None and (isinstance(samples, bool) or not isinstance(samples, int) or samples < 0):
         _err(f"'samples' in {where} split '{name}' must be a non-negative int")
@@ -81,6 +88,20 @@ def validate_gate(gate, index):
         _err(f"gates[{index}].severity must be 'error' or 'warn'")
     gate.setdefault("severity", "error")
     return gate
+
+
+def validate_history_entry(entry, index):
+    _req_mapping(entry, f"history[{index}]")
+    label = entry.get("label")
+    if not isinstance(label, str) or not label:
+        _err(f"history[{index}].label must be a non-empty string")
+    metrics = entry.get("metrics")
+    _req_mapping(metrics, f"history[{index}] metrics")
+    if not metrics:
+        _err(f"history[{index}] has no metrics")
+    for key, value in metrics.items():
+        _check_metric_value(key, value, f"history[{index}]")
+    return {"label": label, "metrics": dict(metrics)}
 
 
 def validate_results(doc):
@@ -117,6 +138,10 @@ def validate_results(doc):
 
     gates = doc.get("gates", [])
     doc["gates"] = [validate_gate(g, i) for i, g in enumerate(_req_list(gates, "gates"))]
+
+    history = doc.get("history", [])
+    doc["history"] = [validate_history_entry(h, i)
+                      for i, h in enumerate(_req_list(history, "history"))]
     return doc
 
 
