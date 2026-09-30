@@ -8,7 +8,7 @@ against a threshold::
 
 evaluate_gates(results) returns a list of GateResult objects plus a summary
 of whether any gate failed. Severity "error" gates flip the overall verdict;
-"warn" gates are reported but do not fail the build — handy for CI usage.
+"warn" gates are reported but do not fail the build, which is handy for CI usage.
 """
 
 from dataclasses import dataclass
