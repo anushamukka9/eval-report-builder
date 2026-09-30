@@ -67,6 +67,36 @@ def best_and_worst_split(results, metric):
     return best[0], worst[0], pairs
 
 
+def metric_highlights(results, lower_is_better=()):
+    """Per-metric best/worst split, honoring ``lower_is_better``.
+
+    Returns a list of dicts with keys ``metric``, ``best_split``,
+    ``best_value``, ``worst_split``, ``worst_value``. Metrics where lower
+    values are better (e.g. latency) get best=min, worst=max.
+    """
+    lower = set(lower_is_better)
+    out = []
+    for metric in metric_union(results):
+        pairs = [(s["name"], s["metrics"][metric])
+                 for s in results["splits"] if metric in s["metrics"]]
+        if not pairs:
+            continue
+        if metric in lower:
+            best = min(pairs, key=lambda p: p[1])
+            worst = max(pairs, key=lambda p: p[1])
+        else:
+            best = max(pairs, key=lambda p: p[1])
+            worst = min(pairs, key=lambda p: p[1])
+        out.append({
+            "metric": metric,
+            "best_split": best[0],
+            "best_value": best[1],
+            "worst_split": worst[0],
+            "worst_value": worst[1],
+        })
+    return out
+
+
 def metric_union(results):
     """All metric names across splits and baselines, in first-seen order."""
     seen, out = set(), []
