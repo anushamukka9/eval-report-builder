@@ -8,7 +8,7 @@ pip install eval-report-builder        # once published
 pip install -e .
 ```
 
-No runtime dependencies — charts are hand-rolled SVG, so the package works
+No runtime dependencies: charts are hand-rolled SVG, so the package works
 anywhere Python 3.10+ runs.
 
 ## The results document
@@ -46,9 +46,17 @@ Full schema (all optional keys included):
     {"metric": "f1", "split": "test", "op": ">=",
      "threshold": 0.90, "severity": "error",
      "description": "F1 must stay above 0.90 on test"}
+  ],
+  "history": [                                   // optional
+    {"label": "run-01", "metrics": {"f1": 0.87, "latency_ms": 13.0}}
   ]
 }
 ```
+
+`history` holds ordered snapshots (nightly runs, weekly evals) used by the
+Trends section. Each entry needs a non-empty string `label` and numeric
+`metrics`; a metric is charted only when it appears in at least two
+snapshots.
 
 Validation rules (`schema.py`): metric values must be numbers (int/float),
 `op` must be one of `>= > <= < ==`, `severity` is `error` (fails the build)
@@ -63,8 +71,14 @@ eval-report-builder build results.json -o report.md
 # Build HTML (self-contained: inline CSS + inline SVG, no external assets)
 eval-report-builder build results.json -o report.html --format html
 
+# Dark theme for the HTML report
+eval-report-builder build results.json -o report-dark.html --format html --theme dark
+
 # Generate a synthetic demo file to try the tool
 eval-report-builder sample -o demo.json --seed 42 --jitter 0.01
+
+# Include synthetic history snapshots so the Trends section has data
+eval-report-builder sample -o demo.json --seed 42 --history-points 6
 
 # Fail CI when an error-severity gate fails (exit code 1)
 eval-report-builder build results.json --format markdown --check-gates
@@ -88,13 +102,26 @@ write_report(report, "report.html", fmt="html")
 
 ## What the report contains
 
-1. **Summary** — model name, split count, total samples, baselines.
-2. **Metrics by split** — one table, all metrics across splits.
-3. **Charts (HTML)** — a bar chart per metric across splits, plus a
+1. **Summary** - model name, split count, total samples, baselines, history snapshots.
+2. **Highlights** - best and worst split per metric (honors `lower_is_better`).
+3. **Metrics by split** - one table, all metrics across splits.
+4. **Charts (HTML)** - a bar chart per metric across splits, plus a
    grouped model-vs-baseline chart for the first shared metric.
-4. **Quality gates** — per-gate PASS/FAIL/WARN lines and an overall verdict.
-5. **Model vs baseline** — per-baseline tables with absolute and relative
+5. **Trends** - a line chart per metric over `history` snapshots (HTML), or a
+   snapshot table (Markdown). Only rendered when the document has history.
+6. **Quality gates** - per-gate PASS/FAIL/WARN lines and an overall verdict.
+7. **Model vs baseline** - per-baseline tables with absolute and relative
    deltas and improvement indicators (▲/▼), honoring `lower_is_better`.
+
+## Themes
+
+HTML reports come in two themes: `light` (default) and `dark`. Pick one with
+`--theme dark` on the CLI or `theme="dark"` in the Python API; the inline SVG
+charts switch palettes automatically so text and gridlines stay readable.
+
+```python
+write_report(report, "report-dark.html", fmt="html", theme="dark")
+```
 
 ## CI pattern
 
